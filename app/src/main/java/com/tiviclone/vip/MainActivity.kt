@@ -1,6 +1,5 @@
 package com.tiviclone.vip
 
-// IMPORTS DE SEGURIDAD (Para que encuentre los recursos siempre)
 import com.tiviclone.vip.R
 import androidx.appcompat.app.AppCompatActivity
 import android.content.Context
@@ -33,7 +32,6 @@ import kotlin.concurrent.thread
 data class Channel(val name: String, val url: String, val group: String)
 
 class MainActivity : AppCompatActivity() {
-    // ... (Resto del código idéntico para asegurar que funcione)
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var rvGroups: RecyclerView
@@ -59,6 +57,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = getSharedPreferences("CineVIP_Data", Context.MODE_PRIVATE)
+        
+        // Vincular Vistas
         playerView = findViewById(R.id.playerView)
         rvGroups = findViewById(R.id.rvGroups)
         rvChannels = findViewById(R.id.rvChannels)
@@ -69,20 +69,91 @@ class MainActivity : AppCompatActivity() {
         infoContainer = findViewById(R.id.infoContainer)
         etSearch = findViewById(R.id.etSearch)
         ivCenterLogo = findViewById(R.id.ivCenterLogo)
+
         setupPlayer()
+
         rvChannels.layoutManager = GridLayoutManager(this, 3)
         rvGroups.layoutManager = LinearLayoutManager(this)
+
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { filterChannels(s.toString()) }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+
         playerView.setOnClickListener { showUI() }
         loadPlaylistFromAssets()
     }
+
+    // --- LECTOR BLINDADO ---
+    private fun loadPlaylistFromAssets() {
+        thread {
+            try {
+                runOnUiThread { tvStatus.text = "Leyendo peliculas..." }
+                val am = assets
+                val isStream = am.open("playlist.zip")
+                val zis = ZipInputStream(isStream)
+                var entry = zis.nextEntry
+                
+                // Buscamos cualquier archivo dentro del zip (ignoramos carpetas macosx, etc)
+                while (entry != null && (entry.isDirectory || entry.name.contains("__MACOSX"))) {
+                    entry = zis.nextEntry
+                }
+
+                if (entry != null) {
+                    val reader = BufferedReader(InputStreamReader(zis))
+                    var line = reader.readLine()
+                    var cName = "Desconocido"
+                    var cGroup = "GENERAL"
+                    allChannels.clear()
+                    
+                    while (line != null) {
+                        val tr = line.trim()
+                        if (tr.startsWith("#EXTINF")) {
+                            // Extraccion de nombre mas robusta
+                            val commaIndex = tr.lastIndexOf(",")
+                            if (commaIndex != -1) {
+                                cName = tr.substring(commaIndex + 1).trim()
+                            }
+                            
+                            // Extraccion de grupo mas flexible
+                            val groupRegex = "group-title=\"([^\"]*)\"".toRegex()
+                            val match = groupRegex.find(tr)
+                            cGroup = match?.groupValues?.get(1)?.trim() ?: "GENERAL"
+                            
+                        } else if (tr.isNotEmpty() && !tr.startsWith("#")) {
+                            // Es una URL, agregamos el canal
+                            allChannels.add(Channel(cName, tr, cGroup))
+                        }
+                        line = reader.readLine()
+                    }
+                    zis.closeEntry()
+                    zis.close()
+                    
+                    runOnUiThread { 
+                        setupGroups()
+                        if (allChannels.isEmpty()) {
+                            Toast.makeText(this@MainActivity, "ALERTA: Lista vacía. Revisa el archivo m3u.", Toast.LENGTH_LONG).show()
+                            tvCategoryTitle.text = "ERROR: 0 Películas encontradas"
+                        } else {
+                            Toast.makeText(this@MainActivity, "Cargadas ${allChannels.size} películas", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread { Toast.makeText(this@MainActivity, "Error: Zip vacío", Toast.LENGTH_LONG).show() }
+                }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                runOnUiThread { Toast.makeText(this@MainActivity, "Error Lector: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    // ... (Resto del código de Adapters y Player igual que antes) ...
     override fun onPause() { super.onPause(); if (::player.isInitialized) player.pause() }
     override fun onStop() { super.onStop(); if (isFinishing && ::player.isInitialized) { player.stop(); player.release() } }
     override fun onDestroy() { super.onDestroy(); if (::player.isInitialized) player.release() }
+
     override fun onBackPressed() {
         if (uiContainer.visibility == View.VISIBLE) {
             if (etSearch.hasFocus()) { rvGroups.requestFocus(); return }
@@ -91,18 +162,21 @@ class MainActivity : AppCompatActivity() {
             else { lastBackPressTime = currentTime; Toast.makeText(this, "Presiona otra vez para SALIR", Toast.LENGTH_SHORT).show() }
         } else { showUI() }
     }
+
     private fun filterChannels(query: String) {
         if (query.isEmpty()) { if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection); return }
         channelsInCurrentGroup.clear()
         channelsInCurrentGroup.addAll(allChannels.filter { it.name.lowercase().contains(query.lowercase()) })
         rvChannels.adapter?.notifyDataSetChanged()
-        tvCategoryTitle.text = "Busqueda: $query"
+        tvCategoryTitle.text = "Resultados: $query"
     }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         resetHideTimer()
         if (uiContainer.visibility == View.GONE) { showUI(); return true }
         return super.onKeyDown(keyCode, event)
     }
+
     private fun showUI() {
         uiContainer.visibility = View.VISIBLE
         ivCenterLogo.visibility = View.VISIBLE
@@ -111,6 +185,7 @@ class MainActivity : AppCompatActivity() {
         if (!rvGroups.hasFocus() && !rvChannels.hasFocus() && !etSearch.hasFocus()) rvGroups.requestFocus()
         resetHideTimer()
     }
+
     private fun hideUI() {
         if (!etSearch.hasFocus()) {
             uiContainer.visibility = View.GONE
@@ -118,49 +193,30 @@ class MainActivity : AppCompatActivity() {
             playerView.hideController()
         }
     }
+    
     private fun resetHideTimer() {
         hideHandler.removeCallbacks(hideRunnable)
         hideHandler.postDelayed(hideRunnable, 5000)
     }
+
     private fun setupPlayer() {
         player = ExoPlayer.Builder(this).build()
         playerView.player = player
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_BUFFERING) { tvStatus.text = "Cargando..."; infoContainer.visibility = View.VISIBLE }
-                if (state == Player.STATE_READY) { tvStatus.text = "Pelicula Lista"; infoHideHandler.postDelayed({ infoContainer.visibility = View.GONE }, 3000) }
+                if (state == Player.STATE_READY) { 
+                     tvStatus.text = "Pelicula Lista"
+                     infoHideHandler.removeCallbacksAndMessages(null)
+                     infoHideHandler.postDelayed({ infoContainer.visibility = View.GONE }, 3000) 
+                }
             }
-            override fun onPlayerError(error: PlaybackException) { tvStatus.text = "Error"; infoContainer.visibility = View.VISIBLE; showUI() }
+            override fun onPlayerError(error: PlaybackException) {
+                tvStatus.text = "Error"; infoContainer.visibility = View.VISIBLE; showUI()
+            }
         })
     }
-    private fun loadPlaylistFromAssets() {
-        thread {
-            try {
-                val zis = ZipInputStream(assets.open("playlist.zip"))
-                val entry = zis.nextEntry
-                if (entry != null) {
-                    val reader = BufferedReader(InputStreamReader(zis))
-                    var line = reader.readLine()
-                    var cName = "Sin Nombre"; var cGroup = "GENERAL"
-                    allChannels.clear()
-                    while (line != null) {
-                        val tr = line.trim()
-                        if (tr.startsWith("#EXTINF")) {
-                             val parts = tr.split(",")
-                             if (parts.size > 1) cName = parts.last().trim()
-                             val gm = "group-title=\"([^\"]*)\"".toRegex().find(tr)
-                             cGroup = gm?.groupValues?.get(1)?.trim() ?: "GENERAL"
-                        } else if (tr.isNotEmpty() && !tr.startsWith("#")) {
-                            allChannels.add(Channel(cName, tr, cGroup))
-                        }
-                        line = reader.readLine()
-                    }
-                    zis.close()
-                    runOnUiThread { setupGroups() }
-                }
-            } catch (e: Exception) {}
-        }
-    }
+
     private fun setupGroups() {
         groups.clear()
         val unique = allChannels.map { it.group }.distinct().sorted()
@@ -168,6 +224,7 @@ class MainActivity : AppCompatActivity() {
         rvGroups.adapter = SimpleAdapter(groups) { showChannelsForGroup(it) }
         if (groups.isNotEmpty()) showChannelsForGroup(groups[0])
     }
+
     private fun showChannelsForGroup(group: String) {
         currentGroupSelection = group
         channelsInCurrentGroup.clear()
@@ -175,6 +232,7 @@ class MainActivity : AppCompatActivity() {
         rvChannels.adapter = ChannelAdapter(channelsInCurrentGroup) { ch -> playChannel(ch) }
         tvCategoryTitle.text = group
     }
+
     private fun playChannel(channel: Channel) {
         uiContainer.visibility = View.GONE
         ivCenterLogo.visibility = View.GONE
@@ -189,6 +247,7 @@ class MainActivity : AppCompatActivity() {
             player.prepare(); player.play()
         } catch(e: Exception) {}
     }
+
     inner class SimpleAdapter(private val items: List<String>, private val onClick: (String) -> Unit) : RecyclerView.Adapter<SimpleAdapter.ViewHolder>() {
         private var selectedPos = -1
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
@@ -199,6 +258,7 @@ class MainActivity : AppCompatActivity() {
         }
         override fun getItemCount() = items.size
     }
+
     inner class ChannelAdapter(private val items: List<Channel>, private val onClick: (Channel) -> Unit) : RecyclerView.Adapter<ChannelAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
         override fun onCreateViewHolder(p: ViewGroup, t: Int) = ViewHolder(layoutInflater.inflate(R.layout.item_movie_card, p, false))
