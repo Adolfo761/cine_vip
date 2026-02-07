@@ -3,14 +3,14 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#050505"> <androidx.media3.ui.PlayerView
+    android:background="#050505">
+    <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:show_buffering="always"
         app:use_controller="true" 
         app:controller_layout_id="@layout/exo_player_control_view" />
-
     <ImageView
         android:id="@+id/ivCenterLogo"
         android:layout_width="200dp"
@@ -18,7 +18,6 @@
         android:layout_gravity="center"
         android:src="@drawable/ic_cinema_logo"
         android:alpha="0.2" />
-
     <LinearLayout
         android:id="@+id/uiContainer"
         android:layout_width="match_parent"
@@ -26,15 +25,12 @@
         android:orientation="horizontal"
         android:background="#F2000000"
         android:padding="8dp">
-
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="0.8"
             android:orientation="vertical"
-            android:background="#121212"
-            android:elevation="10dp">
-            
+            android:background="#121212">
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -44,33 +40,28 @@
                 android:textStyle="bold"
                 android:gravity="center"
                 android:padding="15dp"/>
-            
             <EditText
                 android:id="@+id/etSearch"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="🔍 Buscar Película..."
+                android:hint="🔍 Buscar..."
                 android:textColor="#FFFFFF"
                 android:textColorHint="#888888"
                 android:background="#333333"
                 android:padding="10dp"
                 android:layout_margin="10dp"
                 android:singleLine="true"/>
-                
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvGroups"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scrollbars="none"/>
+                android:layout_height="match_parent"/>
         </LinearLayout>
-
         <LinearLayout
              android:layout_width="0dp"
              android:layout_height="match_parent"
              android:layout_weight="2.2"
              android:orientation="vertical"
              android:layout_marginLeft="15dp">
-             
             <TextView
                 android:id="@+id/tvCategoryTitle"
                 android:layout_width="match_parent"
@@ -80,15 +71,12 @@
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:padding="10dp"/>
-                
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvChannels"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scrollbars="vertical"/>
+                android:layout_height="match_parent"/>
         </LinearLayout>
     </LinearLayout>
-    
     <LinearLayout
         android:id="@+id/infoContainer"
         android:layout_width="match_parent"
