@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
 
         setupPlayer()
 
-        // GRID PARA PELICULAS (3 COLUMNAS)
+        // --- MODO CINE: CUADRÍCULA DE 3 COLUMNAS ---
         rvChannels.layoutManager = GridLayoutManager(this, 3)
         rvGroups.layoutManager = LinearLayoutManager(this)
 
@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity() {
         loadPlaylistFromAssets()
     }
     
-    // --- Lifecycle ---
+    // Ciclo de vida
     override fun onPause() { super.onPause(); if (::player.isInitialized) player.pause() }
     override fun onStop() { super.onStop(); if (isFinishing && ::player.isInitialized) { player.stop(); player.release() } }
     override fun onDestroy() { super.onDestroy(); if (::player.isInitialized) player.release() }
@@ -102,11 +102,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun filterChannels(query: String) {
-        if (query.isEmpty()) { if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection); return }
+        if (query.isEmpty()) { 
+            if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection)
+            return 
+        }
         channelsInCurrentGroup.clear()
         channelsInCurrentGroup.addAll(allChannels.filter { it.name.lowercase().contains(query.lowercase()) })
+        // Notificar al adapter (grid)
         rvChannels.adapter?.notifyDataSetChanged()
-        tvCategoryTitle.text = "Busqueda: $query"
+        tvCategoryTitle.text = "Resultados: $query"
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -144,12 +148,12 @@ class MainActivity : AppCompatActivity() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_BUFFERING) { tvStatus.text = "Cargando..."; infoContainer.visibility = View.VISIBLE }
                 if (state == Player.STATE_READY) { 
-                    tvStatus.text = "Pelicula Lista"
+                    tvStatus.text = "Reproduciendo Película"
                     infoHideHandler.postDelayed({ infoContainer.visibility = View.GONE }, 3000) 
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                tvStatus.text = "Error"; infoContainer.visibility = View.VISIBLE; showUI()
+                tvStatus.text = "Error de Video"; infoContainer.visibility = View.VISIBLE; showUI()
             }
         })
     }
@@ -157,7 +161,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadPlaylistFromAssets() {
         thread {
             try {
-                val zis = ZipInputStream(assets.open("playlist.zip"))
+                val am = assets
+                val zis = ZipInputStream(am.open("playlist.zip"))
                 val entry = zis.nextEntry
                 if (entry != null) {
                     val reader = BufferedReader(InputStreamReader(zis))
@@ -195,7 +200,8 @@ class MainActivity : AppCompatActivity() {
         currentGroupSelection = group
         channelsInCurrentGroup.clear()
         channelsInCurrentGroup.addAll(allChannels.filter { it.group == group })
-        // REINICIAMOS ADAPTER PARA QUE GRID FUNCIONE BIEN
+        
+        // RE-ASIGNAR EL ADAPTER PARA QUE EL GRID FUNCIONE BIEN
         rvChannels.adapter = ChannelAdapter(channelsInCurrentGroup) { ch -> playChannel(ch) }
         tvCategoryTitle.text = group
     }
@@ -212,10 +218,10 @@ class MainActivity : AppCompatActivity() {
             player.stop(); player.clearMediaItems()
             player.setMediaItem(MediaItem.fromUri(channel.url))
             player.prepare(); player.play()
-        } catch(e: Exception) {}
+        } catch(e: Exception) { showUI() }
     }
 
-    // ADAPTERS
+    // ADAPTER CATEGORIAS (Lista)
     inner class SimpleAdapter(private val items: List<String>, private val onClick: (String) -> Unit) : RecyclerView.Adapter<SimpleAdapter.ViewHolder>() {
         private var selectedPos = -1
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
@@ -227,6 +233,7 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount() = items.size
     }
 
+    // ADAPTER PELICULAS (Grid / Tarjetas)
     inner class ChannelAdapter(private val items: List<Channel>, private val onClick: (Channel) -> Unit) : RecyclerView.Adapter<ChannelAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
         override fun onCreateViewHolder(p: ViewGroup, t: Int) = ViewHolder(layoutInflater.inflate(R.layout.item_movie_card, p, false))
