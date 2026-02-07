@@ -1,5 +1,8 @@
 package com.tiviclone.vip
 
+// IMPORTS DE SEGURIDAD (Para que encuentre los recursos siempre)
+import com.tiviclone.vip.R
+import androidx.appcompat.app.AppCompatActivity
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
@@ -14,7 +17,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -31,7 +33,7 @@ import kotlin.concurrent.thread
 data class Channel(val name: String, val url: String, val group: String)
 
 class MainActivity : AppCompatActivity() {
-
+    // ... (Resto del código idéntico para asegurar que funcione)
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var rvGroups: RecyclerView
@@ -44,12 +46,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSearch: EditText
     private lateinit var ivCenterLogo: ImageView
     private lateinit var prefs: SharedPreferences
-
     private val allChannels = mutableListOf<Channel>()
     private val groups = mutableListOf<String>()
     private val channelsInCurrentGroup = mutableListOf<Channel>()
     private var currentGroupSelection = ""
-    
     private val hideHandler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { hideUI() }
     private val infoHideHandler = Handler(Looper.getMainLooper())
@@ -59,7 +59,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = getSharedPreferences("CineVIP_Data", Context.MODE_PRIVATE)
-        
         playerView = findViewById(R.id.playerView)
         rvGroups = findViewById(R.id.rvGroups)
         rvChannels = findViewById(R.id.rvChannels)
@@ -70,28 +69,20 @@ class MainActivity : AppCompatActivity() {
         infoContainer = findViewById(R.id.infoContainer)
         etSearch = findViewById(R.id.etSearch)
         ivCenterLogo = findViewById(R.id.ivCenterLogo)
-
         setupPlayer()
-
-        // --- MODO CINE: CUADRÍCULA DE 3 COLUMNAS ---
         rvChannels.layoutManager = GridLayoutManager(this, 3)
         rvGroups.layoutManager = LinearLayoutManager(this)
-
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { filterChannels(s.toString()) }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
-
         playerView.setOnClickListener { showUI() }
         loadPlaylistFromAssets()
     }
-    
-    // Ciclo de vida
     override fun onPause() { super.onPause(); if (::player.isInitialized) player.pause() }
     override fun onStop() { super.onStop(); if (isFinishing && ::player.isInitialized) { player.stop(); player.release() } }
     override fun onDestroy() { super.onDestroy(); if (::player.isInitialized) player.release() }
-
     override fun onBackPressed() {
         if (uiContainer.visibility == View.VISIBLE) {
             if (etSearch.hasFocus()) { rvGroups.requestFocus(); return }
@@ -100,25 +91,18 @@ class MainActivity : AppCompatActivity() {
             else { lastBackPressTime = currentTime; Toast.makeText(this, "Presiona otra vez para SALIR", Toast.LENGTH_SHORT).show() }
         } else { showUI() }
     }
-
     private fun filterChannels(query: String) {
-        if (query.isEmpty()) { 
-            if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection)
-            return 
-        }
+        if (query.isEmpty()) { if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection); return }
         channelsInCurrentGroup.clear()
         channelsInCurrentGroup.addAll(allChannels.filter { it.name.lowercase().contains(query.lowercase()) })
-        // Notificar al adapter (grid)
         rvChannels.adapter?.notifyDataSetChanged()
-        tvCategoryTitle.text = "Resultados: $query"
+        tvCategoryTitle.text = "Busqueda: $query"
     }
-
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         resetHideTimer()
         if (uiContainer.visibility == View.GONE) { showUI(); return true }
         return super.onKeyDown(keyCode, event)
     }
-
     private fun showUI() {
         uiContainer.visibility = View.VISIBLE
         ivCenterLogo.visibility = View.VISIBLE
@@ -127,7 +111,6 @@ class MainActivity : AppCompatActivity() {
         if (!rvGroups.hasFocus() && !rvChannels.hasFocus() && !etSearch.hasFocus()) rvGroups.requestFocus()
         resetHideTimer()
     }
-
     private fun hideUI() {
         if (!etSearch.hasFocus()) {
             uiContainer.visibility = View.GONE
@@ -135,34 +118,25 @@ class MainActivity : AppCompatActivity() {
             playerView.hideController()
         }
     }
-    
     private fun resetHideTimer() {
         hideHandler.removeCallbacks(hideRunnable)
         hideHandler.postDelayed(hideRunnable, 5000)
     }
-
     private fun setupPlayer() {
         player = ExoPlayer.Builder(this).build()
         playerView.player = player
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_BUFFERING) { tvStatus.text = "Cargando..."; infoContainer.visibility = View.VISIBLE }
-                if (state == Player.STATE_READY) { 
-                    tvStatus.text = "Reproduciendo Película"
-                    infoHideHandler.postDelayed({ infoContainer.visibility = View.GONE }, 3000) 
-                }
+                if (state == Player.STATE_READY) { tvStatus.text = "Pelicula Lista"; infoHideHandler.postDelayed({ infoContainer.visibility = View.GONE }, 3000) }
             }
-            override fun onPlayerError(error: PlaybackException) {
-                tvStatus.text = "Error de Video"; infoContainer.visibility = View.VISIBLE; showUI()
-            }
+            override fun onPlayerError(error: PlaybackException) { tvStatus.text = "Error"; infoContainer.visibility = View.VISIBLE; showUI() }
         })
     }
-
     private fun loadPlaylistFromAssets() {
         thread {
             try {
-                val am = assets
-                val zis = ZipInputStream(am.open("playlist.zip"))
+                val zis = ZipInputStream(assets.open("playlist.zip"))
                 val entry = zis.nextEntry
                 if (entry != null) {
                     val reader = BufferedReader(InputStreamReader(zis))
@@ -187,7 +161,6 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {}
         }
     }
-
     private fun setupGroups() {
         groups.clear()
         val unique = allChannels.map { it.group }.distinct().sorted()
@@ -195,17 +168,13 @@ class MainActivity : AppCompatActivity() {
         rvGroups.adapter = SimpleAdapter(groups) { showChannelsForGroup(it) }
         if (groups.isNotEmpty()) showChannelsForGroup(groups[0])
     }
-
     private fun showChannelsForGroup(group: String) {
         currentGroupSelection = group
         channelsInCurrentGroup.clear()
         channelsInCurrentGroup.addAll(allChannels.filter { it.group == group })
-        
-        // RE-ASIGNAR EL ADAPTER PARA QUE EL GRID FUNCIONE BIEN
         rvChannels.adapter = ChannelAdapter(channelsInCurrentGroup) { ch -> playChannel(ch) }
         tvCategoryTitle.text = group
     }
-
     private fun playChannel(channel: Channel) {
         uiContainer.visibility = View.GONE
         ivCenterLogo.visibility = View.GONE
@@ -218,10 +187,8 @@ class MainActivity : AppCompatActivity() {
             player.stop(); player.clearMediaItems()
             player.setMediaItem(MediaItem.fromUri(channel.url))
             player.prepare(); player.play()
-        } catch(e: Exception) { showUI() }
+        } catch(e: Exception) {}
     }
-
-    // ADAPTER CATEGORIAS (Lista)
     inner class SimpleAdapter(private val items: List<String>, private val onClick: (String) -> Unit) : RecyclerView.Adapter<SimpleAdapter.ViewHolder>() {
         private var selectedPos = -1
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
@@ -232,8 +199,6 @@ class MainActivity : AppCompatActivity() {
         }
         override fun getItemCount() = items.size
     }
-
-    // ADAPTER PELICULAS (Grid / Tarjetas)
     inner class ChannelAdapter(private val items: List<Channel>, private val onClick: (Channel) -> Unit) : RecyclerView.Adapter<ChannelAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
         override fun onCreateViewHolder(p: ViewGroup, t: Int) = ViewHolder(layoutInflater.inflate(R.layout.item_movie_card, p, false))
