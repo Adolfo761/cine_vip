@@ -1,7 +1,6 @@
 package com.tiviclone.vip
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -28,7 +27,6 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
@@ -38,7 +36,6 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import kotlin.concurrent.thread
 
-// Agregamos campo 'logo' al canal
 data class Channel(val name: String, val url: String, val group: String, val logo: String)
 
 class MainActivity : AppCompatActivity() {
@@ -47,12 +44,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var rvGroups: RecyclerView
     private lateinit var rvChannels: RecyclerView
-    private lateinit var tvChannelName: TextView
     private lateinit var tvStatus: TextView
     private lateinit var uiContainer: View
     private lateinit var infoContainer: View
     private lateinit var etSearch: EditText
-    private lateinit var prefs: SharedPreferences
+    
+    // URL FIJA
+    private val PLAYLIST_URL = "https://tinyurl.com/yuwjrwbx"
+    private val CACHE_FILE = "playlist_v2.m3u"
 
     private val allChannels = mutableListOf<Channel>()
     private val groups = mutableListOf<String>()
@@ -60,86 +59,76 @@ class MainActivity : AppCompatActivity() {
     private var currentGroupSelection = ""
     private var currentPlayingChannel: Channel? = null
     
-    // CACHÉ: Nombre del archivo local
-    private val CACHE_FILE_NAME = "playlist_cache_v1.m3u"
-    
     private var lastBackPressTime: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        try {
+            setContentView(R.layout.activity_main)
 
-        prefs = getSharedPreferences("VIP_Data", Context.MODE_PRIVATE)
-        
-        playerView = findViewById(R.id.playerView)
-        rvGroups = findViewById(R.id.rvGroups)
-        rvChannels = findViewById(R.id.rvChannels)
-        tvChannelName = findViewById(R.id.tvChannelName)
-        tvStatus = findViewById(R.id.tvStatus)
-        uiContainer = findViewById(R.id.uiContainer)
-        infoContainer = findViewById(R.id.infoContainer)
-        etSearch = findViewById(R.id.etSearch)
+            playerView = findViewById(R.id.playerView)
+            rvGroups = findViewById(R.id.rvGroups)
+            rvChannels = findViewById(R.id.rvChannels)
+            tvStatus = findViewById(R.id.tvStatus)
+            uiContainer = findViewById(R.id.uiContainer)
+            infoContainer = findViewById(R.id.infoContainer)
+            etSearch = findViewById(R.id.etSearch)
 
-        setupPlayer()
+            setupPlayer()
 
-        // Usamos Grid para que se vean bonitas las tarjetas
-        rvGroups.layoutManager = LinearLayoutManager(this)
-        rvChannels.layoutManager = GridLayoutManager(this, 3)
+            rvGroups.layoutManager = LinearLayoutManager(this)
+            rvChannels.layoutManager = GridLayoutManager(this, 3)
 
-        etSearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { filterChannels(s.toString()) }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
+            etSearch.addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) { filterChannels(s.toString()) }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
 
-        // Click en pantalla muestra menú
-        playerView.setOnClickListener { showUI() }
+            // Click en pantalla -> Muestra menú
+            playerView.setOnClickListener { showUI() }
 
-        // CARGA INTELIGENTE
-        checkAndLoadPlaylist()
+            // INICIAR CARGA INTELIGENTE
+            loadContentSmart()
+            
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error al iniciar: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
-    // --- LÓGICA DE CACHÉ ---
-    private fun checkAndLoadPlaylist() {
-        val cacheFile = File(filesDir, CACHE_FILE_NAME)
-        
-        if (cacheFile.exists() && cacheFile.length() > 0) {
-            // SI YA EXISTE: Carga instantánea desde el celular
-            tvStatus.text = "Cargando biblioteca..."
-            thread {
-                parsePlaylistFile(cacheFile)
-            }
+    private fun loadContentSmart() {
+        val file = File(filesDir, CACHE_FILE)
+        if (file.exists() && file.length() > 0) {
+            // CARGA RAPIDA (CACHE)
+            tvStatus.text = "Cargando..."
+            thread { parsePlaylist(file) }
         } else {
-            // PRIMERA VEZ: Descarga de internet
-            tvStatus.text = "Descargando contenido (Solo la primera vez)..."
-            loadPlaylistFromNetwork("https://tinyurl.com/yuwjrwbx", cacheFile)
+            // PRIMERA VEZ (DESCARGA)
+            tvStatus.text = "Descargando contenido (Espere)..."
+            thread { downloadPlaylist(file) }
         }
     }
 
-    private fun loadPlaylistFromNetwork(playlistUrl: String, saveToFile: File) {
-        thread {
-            try {
-                val url = URL(playlistUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.instanceFollowRedirects = true
-                
-                // Leemos y guardamos al mismo tiempo
-                val inputStream = conn.inputStream
-                val content = inputStream.bufferedReader().use { it.readText() }
-                
-                // Guardar en disco para la próxima
-                saveToFile.writeText(content)
-                
-                // Ahora procesamos lo guardado
-                parsePlaylistFile(saveToFile)
-                
-            } catch (e: Exception) { 
-                runOnUiThread { tvStatus.text = "Error de descarga: Verifique internet" } 
+    private fun downloadPlaylist(targetFile: File) {
+        try {
+            val url = URL(PLAYLIST_URL)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 15000
+            
+            val content = conn.inputStream.bufferedReader().use { it.readText() }
+            targetFile.writeText(content)
+            
+            parsePlaylist(targetFile)
+        } catch (e: Exception) {
+            runOnUiThread { 
+                tvStatus.text = "Error de Red"
+                Toast.makeText(this, "Verifique su internet", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun parsePlaylistFile(file: File) {
+    private fun parsePlaylist(file: File) {
         try {
             val reader = BufferedReader(FileReader(file))
             var line = reader.readLine()
@@ -152,21 +141,18 @@ class MainActivity : AppCompatActivity() {
             while (line != null) {
                 val trimmed = line.trim()
                 if (trimmed.startsWith("#EXTINF")) {
-                    // Extraer Nombre
                     val parts = trimmed.split(",")
                     if (parts.size > 1) cName = parts.last().trim()
                     
-                    // Extraer Grupo
                     val groupMatch = "group-title=\"([^\"]*)\"".toRegex().find(trimmed)
                     cGroup = groupMatch?.groupValues?.get(1)?.trim() ?: "GENERAL"
                     
-                    // Extraer Logo (tvg-logo)
                     val logoMatch = "tvg-logo=\"([^\"]*)\"".toRegex().find(trimmed)
                     cLogo = logoMatch?.groupValues?.get(1)?.trim() ?: ""
                     
                 } else if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
                     allChannels.add(Channel(cName, trimmed, cGroup, cLogo))
-                    cLogo = "" // Reset logo
+                    cLogo = ""
                 }
                 line = reader.readLine()
             }
@@ -174,29 +160,27 @@ class MainActivity : AppCompatActivity() {
             
             runOnUiThread { 
                 setupGroups()
-                tvStatus.text = "" 
-                // Si no hay nada reproduciendo, mostrar menú
-                if (!player.isPlaying) showUI()
+                tvStatus.text = ""
+                // Mostrar menú al inicio
+                showUI()
             }
         } catch (e: Exception) {
-            runOnUiThread { tvStatus.text = "Error al procesar lista" }
+             runOnUiThread { tvStatus.text = "Error de Datos" }
         }
     }
 
-    // --- LOGICA DE BOTON ATRAS ---
+    // --- LOGICA BOTON ATRAS ---
     override fun onBackPressed() {
         if (uiContainer.visibility == View.VISIBLE) {
-            // EL MENU ESTA ABIERTO
+            // EL MENÚ ESTÁ ABIERTO
             if (player.isPlaying) {
-                // Si hay video de fondo -> VOLVER AL VIDEO
+                // 1 Clic -> Volver al Video
                 hideUI()
             } else {
-                // Si no hay video -> DOBLE CLICK PARA SALIR
-                if (etSearch.hasFocus()) { rvGroups.requestFocus(); return }
-                
+                // 2 Clics -> Salir
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastBackPressTime < 2000) {
-                    super.onBackPressed() 
+                    super.onBackPressed()
                     finishAffinity()
                 } else {
                     lastBackPressTime = currentTime
@@ -204,18 +188,27 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else {
-            // EL VIDEO ESTA SONANDO -> MOSTRAR MENU
+            // ESTAMOS VIENDO VIDEO -> ABRIR MENU
             showUI()
         }
     }
 
-    // --- LOGICA ZAPPING (Control Remoto) ---
+    // --- CONTROL REMOTO (ZAPPING) ---
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (uiContainer.visibility == View.GONE) {
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU -> { showUI(); return true }
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { zapChannel(-1); return true }
-                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { zapChannel(1); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU -> {
+                    showUI()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    zapChannel(-1)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    zapChannel(1)
+                    return true
+                }
             }
         }
         return super.onKeyDown(keyCode, event)
@@ -223,11 +216,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun zapChannel(offset: Int) {
         if (channelsInCurrentGroup.isEmpty()) { showUI(); return }
-        val currentIndex = channelsInCurrentGroup.indexOfFirst { it.url == currentPlayingChannel?.url }
-        if (currentIndex != -1) {
+        val idx = channelsInCurrentGroup.indexOfFirst { it.url == currentPlayingChannel?.url }
+        if (idx != -1) {
             val size = channelsInCurrentGroup.size
-            val newIndex = (currentIndex + offset + size) % size 
-            playChannel(channelsInCurrentGroup[newIndex])
+            val newIdx = (idx + offset + size) % size
+            playChannel(channelsInCurrentGroup[newIdx])
         }
     }
 
@@ -236,7 +229,6 @@ class MainActivity : AppCompatActivity() {
         playerView.useController = true
         playerView.showController()
         if (!rvGroups.hasFocus()) rvGroups.requestFocus()
-        // NOTA: YA NO HAY TIMER. El menu se queda quieto.
     }
 
     private fun hideUI() {
@@ -246,10 +238,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ... (SetupPlayer y otros métodos auxiliares se mantienen igual, solo actualizamos los adapters) ...
-
+    // --- REPRODUCTOR ---
     private fun setupPlayer() {
-        // (Configuración SSL igual que antes)
         val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
             override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
             override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
@@ -258,34 +248,42 @@ class MainActivity : AppCompatActivity() {
         val sslContext = SSLContext.getInstance("SSL")
         sslContext.init(null, trustAllCerts, SecureRandom())
         val client = OkHttpClient.Builder().sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager).hostnameVerifier { _, _ -> true }.build()
-        val dataSourceFactory = OkHttpDataSource.Factory(client).setUserAgent("VLC/3.0.18 LibVLC/3.0.18")
+        val dataSourceFactory = OkHttpDataSource.Factory(client).setUserAgent("CineVIP/2.0")
+
         player = ExoPlayer.Builder(this).setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)).build()
         playerView.player = player
+        
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_BUFFERING) { tvStatus.text = "Cargando..."; infoContainer.visibility = View.VISIBLE }
-                if (state == Player.STATE_READY) { 
-                    tvStatus.text = "Reproduciendo"
+                if (state == Player.STATE_BUFFERING) {
+                     tvStatus.text = "Cargando..."
+                     infoContainer.visibility = View.VISIBLE
+                }
+                if (state == Player.STATE_READY) {
+                    tvStatus.text = ""
                     infoContainer.postDelayed({ infoContainer.visibility = View.GONE }, 2000)
                 }
             }
-            override fun onPlayerError(error: PlaybackException) { tvStatus.text = "Error"; infoContainer.visibility = View.VISIBLE; showUI() }
+            override fun onPlayerError(error: PlaybackException) {
+                tvStatus.text = "Error de Video"
+                infoContainer.visibility = View.VISIBLE
+                showUI()
+            }
         })
     }
-    
-    // --- ADAPTERS ACTUALIZADOS CON IMAGENES ---
-    
+
+    // --- ADAPTERS ---
     private fun setupGroups() {
         groups.clear()
-        val uniqueGroups = allChannels.map { it.group }.distinct().sorted()
-        groups.addAll(uniqueGroups)
+        val unique = allChannels.map { it.group }.distinct().sorted()
+        groups.addAll(unique)
         rvGroups.adapter = SimpleAdapter(groups) { group -> 
             currentGroupSelection = group
             showChannelsForGroup(group)
         }
-        if (groups.isNotEmpty() && currentGroupSelection.isEmpty()) { 
-            currentGroupSelection = groups[0]
-            showChannelsForGroup(groups[0]) 
+        if (groups.isNotEmpty()) {
+             currentGroupSelection = groups[0]
+             showChannelsForGroup(groups[0])
         }
     }
 
@@ -297,9 +295,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun playChannel(channel: Channel) {
         currentPlayingChannel = channel
-        hideUI() // Escondemos menu inmediatamente al dar click
+        hideUI() // OCULTAR MENU AL SELECCIONAR
         infoContainer.visibility = View.VISIBLE
-        tvChannelName.text = channel.name
+        // Usamos solo el nombre en el toast/status
+        tvStatus.text = "Conectando..."
         
         try {
             player.stop()
@@ -310,53 +309,41 @@ class MainActivity : AppCompatActivity() {
         } catch(e: Exception) { showUI() }
     }
 
+    // Adapter Grupos
     inner class SimpleAdapter(private val items: List<String>, private val onClick: (String) -> Unit) : RecyclerView.Adapter<SimpleAdapter.ViewHolder>() {
         private var selectedPos = -1
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { val t: TextView = v.findViewById(R.id.text1) }
         override fun onCreateViewHolder(p: ViewGroup, t: Int) = ViewHolder(layoutInflater.inflate(R.layout.item_list, p, false))
         override fun onBindViewHolder(h: ViewHolder, i: Int) {
-            h.t.text = items[i]; h.itemView.isSelected = (selectedPos == i)
+            h.t.text = items[i]
+            h.itemView.isSelected = (selectedPos == i)
             h.itemView.setOnClickListener { selectedPos = h.adapterPosition; notifyDataSetChanged(); onClick(items[i]) }
         }
         override fun getItemCount() = items.size
     }
 
-    // ADAPTER CON GLIDE (IMAGENES)
+    // Adapter Canales (Con Glide)
     inner class ChannelAdapter(private val items: List<Channel>, private val onClick: (Channel) -> Unit) : RecyclerView.Adapter<ChannelAdapter.ViewHolder>() {
         inner class ViewHolder(v: View) : RecyclerView.ViewHolder(v) { 
-            val t: TextView = v.findViewById(R.id.text1) 
+            val t: TextView = v.findViewById(R.id.text1)
             val img: ImageView = v.findViewById(R.id.imgLogo)
         }
         override fun onCreateViewHolder(p: ViewGroup, t: Int) = ViewHolder(layoutInflater.inflate(R.layout.item_movie_card, p, false))
-        
         override fun onBindViewHolder(h: ViewHolder, i: Int) {
             val c = items[i]
             h.t.text = c.name
             
-            // Cargar imagen si existe
             if (c.logo.isNotEmpty()) {
                 Glide.with(h.itemView.context)
                     .load(c.logo)
-                    .diskCacheStrategy(DiskCacheStrategy.ALL) // Cachear imagenes tambien
                     .placeholder(android.R.drawable.ic_menu_gallery)
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
                     .into(h.img)
             } else {
                 h.img.setImageResource(android.R.drawable.ic_menu_gallery)
             }
-            
             h.itemView.setOnClickListener { onClick(c) }
         }
         override fun getItemCount() = items.size
-    }
-    
-    // Lifecycle
-    override fun onPause() { super.onPause(); if (::player.isInitialized) player.pause() }
-    override fun onStop() { super.onStop(); if (isFinishing && ::player.isInitialized) { player.stop(); player.release() } }
-    override fun onDestroy() { super.onDestroy(); if (::player.isInitialized) player.release() }
-    private fun filterChannels(query: String) {
-        if (query.isEmpty()) { if (currentGroupSelection.isNotEmpty()) showChannelsForGroup(currentGroupSelection); return }
-        channelsInCurrentGroup.clear()
-        channelsInCurrentGroup.addAll(allChannels.filter { it.name.lowercase().contains(query.lowercase()) })
-        rvChannels.adapter?.notifyDataSetChanged()
     }
 }
