@@ -9,41 +9,47 @@ android {
 
     defaultConfig {
         applicationId "com.tiviclone.cine"
-        minSdk 21
+        minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 3  // Subimos versión para forzar actualización
+        versionName "2.0"
     }
 
-    lint {
-        abortOnError false
-        checkReleaseBuilds false
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
     }
-
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = '17'
-    }
-    buildFeatures {
-        viewBinding false
+        jvmTarget = '1.8'
     }
 }
 
 dependencies {
-    annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
-    implementation "com.github.bumptech.glide:glide:4.16.0"
-    implementation "androidx.gridlayout:gridlayout:1.0.0"
-    implementation "androidx.cardview:cardview:1.0.0"
-    implementation "androidx.media3:media3-exoplayer-hls:1.2.0"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    
+    // EXOPLAYER (Reproductor)
     implementation 'androidx.media3:media3-exoplayer:1.2.0'
     implementation 'androidx.media3:media3-ui:1.2.0'
+    implementation 'androidx.media3:media3-common:1.2.0'
     implementation 'androidx.media3:media3-datasource-okhttp:1.2.0'
+    
+    // DISEÑO (Grid y Tarjetas)
+    implementation "androidx.cardview:cardview:1.0.0"
+    implementation "androidx.gridlayout:gridlayout:1.0.0"
+    
+    // IMAGENES (Glide) - CRÍTICO PARA QUE NO SE CIERRE AL CARGAR LOGOS
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+    
+    // RED
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }
